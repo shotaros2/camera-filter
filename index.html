@@ -165,7 +165,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
     <label class="field" id="r-time"><span id="l-time">時刻</span><input type="text" id="f-time"></label>
     <label class="field" id="r-suf"><span id="l-suf">名前の後ろ</span><input type="text" id="f-suf"></label>
     <label class="field" id="r-scroll"><span id="l-scroll">スクロールニュース</span><input type="text" id="f-scroll" autocomplete="off"></label>
-    <label class="check" id="r-scroll-on" hidden><input type="checkbox" id="scroll-on" checked>スクロールティッカーを表示</label>
+    <label class="check" id="r-scroll-on" hidden><input type="checkbox" id="scroll-on">スクロールティッカーを表示</label>
   </div>
 
   <div class="sheet" id="viewSheet">
@@ -717,7 +717,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
     cctv: { name: "TOKYO ST.", time: nowTime },
     dual: { time: nowTime, name: "東京" }
   };
-  var opts = { led: "full", dual: { pos: "tl", size: 34, border: 8, radius: 28, late: false, flat: true }, scrollOn: true };
+  var opts = { led: "full", dual: { pos: "tl", size: 34, border: 8, radius: 28, late: false, flat: true }, scrollOn: false };
   var state = { cur: "news", main: sample("main"), sub: sample("sub") };
 
   function S(id) {
@@ -810,9 +810,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
     $("subPasteBox").style.display = id === "dual" ? "" : "none";
     $("r-scroll-on").hidden = !isNewsFrame(id);
     if (isNewsFrame(id)) {
-      var defaultOn = id !== "newsr";
-      opts.scrollOn = defaultOn;
-      $("scroll-on").checked = defaultOn;
+      opts.scrollOn = false;
+      $("scroll-on").checked = false;
     }
     startTicker();
     var dual = id === "dual";
