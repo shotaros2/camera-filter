@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>報道風フィルター 完全版</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;}
+  :root{
+    --ntv-orange:#ff6600; --ntv-yellow:#ffd100; --ntv-red:#d80000;
+    --tbs-red:#dc0000;
+    --asahi-blue:#003366; --asahi-sky:#00a0e9;
+    --fuji-blue:#005bbb; --fuji-yellow:#ffcc00;
+    --nhk-navy:#00337c; --nhk-red:#b91b2c;
+    --wshow-pink:#ff2e88; --wshow-gold:#ffd700;
+  }
+  body{background:#111;color:#fff;min-height:100vh;padding:20px;}
+  .container{max-width:900px;margin:0 auto;}
+  h1{text-align:center;margin-bottom:20px;font-size:1.4rem;letter-spacing:0.05em;}
+
+  /* プレビュー領域 */
+  .preview-wrap{position:relative;width:100%;aspect-ratio:16/9;background:#000;overflow:hidden;border-radius:8px;margin-bottom:20px;}
+  .blur-bg{position:absolute;inset:0;background-position:center;background-size:cover;filter:blur(12px) saturate(0.7) brightness(0.8);transform:scale(1.1);z-index:1;}
+  .main-photo{position:absolute;inset:0;z-index:2;object-fit:contain;}
+  .overlay{position:absolute;inset:0;z-index:10;pointer-events:none;}
+
+  .text-stroke{text-shadow:1px 1px 2px #000,-1px -1px 2px #000,1px -1px 2px #000,-1px 1px 2px #000;}
+
+  /* 上部白地見出し帯 */
+  .top-banner{position:absolute;top:12px;right:12px;width:70%;background:#fff;color:#000;border-radius:6px;overflow:hidden;z-index:15;box-shadow:0 2px 6px rgba(0,0,0,0.3);}
+  .banner-border{height:4px;background:linear-gradient(90deg,#0066cc,#9933cc);}
+  .banner-row1{padding:6px 10px;color:var(--ntv-red);font-weight:bold;font-size:0.9rem;line-height:1.4;}
+  .banner-row2{padding:4px 10px 8px 10px;font-size:0.85rem;line-height:1.4;}
+
+  /* 左上：局ロゴ＋時計 */
+  .top-left{position:absolute;top:12px;left:12px;display:flex;gap:8px;align-items:center;z-index:15;}
+  .station-badge{padding:4px 10px;border-radius:6px;font-weight:bold;font-size:0.9rem;}
+  .clock{background:#222;padding:4px 10px;border-radius:6px;font-weight:bold;font-size:0.9rem;}
+
+  /* 中段：名前ラベル */
+  .name-bar{position:absolute;top:100px;left:12px;display:flex;align-items:center;gap:8px;z-index:15;}
+  .suspect-tag{background:var(--ntv-red);color:#fff;padding:3px 10px;border-radius:4px;font-weight:bold;}
+  .suspect-name{font-size:1.2rem;font-weight:bold;}
+  .suspect-note{font-size:0.95rem;opacity:0.9;}
+
+  /* 供述・犯罪内容ボックス */
+  .quote-box{position:absolute;top:145px;left:12px;max-width:55%;z-index:15;display:none;}
+  .quote-box.show{display:block;}
+  .quote-box-inner{background:rgba(0,0,0,0.82);border-left:4px solid var(--ntv-red);padding:6px 12px;border-radius:0 4px 4px 0;}
+  .quote-label{font-size:0.7rem;color:#aaa;margin-bottom:2px;letter-spacing:0.08em;}
+  .quote-text{font-size:0.95rem;line-height:1.5;font-weight:bold;}
+
+  /* 下部：フルワイド説明テロップ */
+  .desc-bar{position:absolute;bottom:24px;left:0;right:0;background:rgba(0,0,0,0.85);padding:10px 16px;z-index:15;}
+  .desc-line1{font-size:1rem;margin-bottom:4px;line-height:1.5;}
+  .desc-line2{font-size:1rem;line-height:1.5;}
+
+  /* 最下部：スクロールテロップ */
+  .ticker{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.85);padding:4px 0;overflow:hidden;white-space:nowrap;z-index:20;transform:translateY(100%);transition:transform 0.3s;}
+  .ticker.show{transform:translateY(0);}
+  .ticker-text{display:inline-block;padding-left:100%;animation:ticker 25s linear infinite;color:var(--ntv-yellow);font-weight:bold;font-size:0.85rem;}
+  @keyframes ticker{to{transform:translateX(-100%);}}
+
+  /* モザイク */
+  .mosaic-eye{position:absolute;z-index:25;display:none;}
+  .mosaic-eye.active{display:block;top:26%;left:22%;width:56%;height:12px;background:#000;filter:blur(3px);}
+  .mosaic-full{position:absolute;inset:0;background:rgba(0,0,0,0.6);display:none;z-index:25;}
+  .mosaic-full.active{display:block;}
+  .mosaic-note{position:absolute;top:8px;left:8px;font-size:0.65rem;opacity:0.7;display:none;z-index:26;}
+  .mosaic-note.active{display:block;}
+
+  /* 操作パネル */
+  .controls{background:#222;padding:20px;border-radius:8px;margin-top:20px;}
+  .controls h2{font-size:1rem;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid #444;}
+  .row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;align-items:center;}
+  label{font-size:0.85rem;min-width:90px;}
+  input,select,button{padding:6px 8px;border:none;border-radius:4px;background:#333;color:#fff;}
+  button{background:#0066cc;cursor:pointer;}
+  button:hover{opacity:0.9;}
+  button.secondary{background:#444;}
+  input[type="range"]{width:120px;}
+  .preset-row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;}
+  .preset-btn{font-size:0.8rem;padding:5px 10px;}
+  .upload-area{border:2px dashed #555;border-radius:6px;padding:20px;text-align:center;cursor:pointer;margin:10px 0;}
+  .upload-area:hover{border-color:#888;background:#2a2a2a;}
+  .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+  .three-col h3{font-size:0.9rem;margin-bottom:6px;}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>報道風 犯罪者報道フィルター</h1>
+
+  <div class="preview-wrap" id="previewWrap">
+    <div class="blur-bg" id="blurBg"></div>
+    <img class="main-photo" id="mainPhoto" src="" alt="" style="display:none;">
+    <div class="overlay">
+
+      <div class="top-banner">
+        <div class="banner-border" id="bannerBorder"></div>
+        <div class="banner-row1" id="bannerRow1"></div>
+        <div class="banner-row2" id="bannerRow2"></div>
+      </div>
+
+      <div class="top-left">
+        <div class="station-badge" id="stationBadge">NTV</div>
+        <div class="clock" id="clock">15:14</div>
+      </div>
+
+      <div class="name-bar text-stroke">
+        <span class="suspect-tag">容疑者</span>
+        <span class="suspect-name" id="suspectName"></span>
+        <span class="suspect-note" id="suspectNote"></span>
+      </div>
+
+      <div class="desc-bar text-stroke">
+        <div class="desc-line1" id="descLine1"></div>
+        <div class="desc-line2" id="descLine2"></div>
+      </div>
+
+      <!-- 供述・犯罪内容 -->
+      <div class="quote-box text-stroke" id="quoteBox">
+        <div class="quote-box-inner">
+          <div class="quote-label">供述・犯罪内容</div>
+          <div class="quote-text" id="quoteText"></div>
+        </div>
+      </div>
+
+      <div class="mosaic-eye" id="mosaicEye"></div>
+      <div class="mosaic-full" id="mosaicFull"></div>
+      <div class="mosaic-note text-stroke" id="mosaicNote">※報道により一部をマスキングしています</div>
+    </div>
+
+    <div class="ticker" id="ticker">
+      <div class="ticker-text" id="tickerText">
+        ・全国の天気 明日は太平洋側で広く雨 ・日経平均株価 続伸 ・プロ野球日本シリーズ第3戦 今夜 ・交通情報 首都高速渋滞中 ・気象庁 今後の進路に注意
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <h2>写真アップロード</h2>
+    <div class="upload-area" id="uploadArea">
+      ここに写真をドロップ または クリックして選択
+      <input type="file" id="fileInput" accept="image/*" style="display:none;">
+    </div>
+    <div class="row">
+      <label>上下位置</label>
+      <input type="range" id="posY" min="0" max="100" value="40">
+      <span id="posYval">40</span>
+      <label>左右位置</label>
+      <input type="range" id="posX" min="0" max="100" value="50">
+      <span id="posXval">50</span>
+    </div>
+    <div class="row">
+      <label>背景ぼかし</label>
+      <input type="checkbox" id="blurBgToggle" checked>
+      <label>彩度</label>
+      <input type="range" id="saturate" min="0" max="100" value="80">
+      <span id="satVal">80%</span>
+    </div>
+
+    <h2>局プリセット</h2>
+    <div class="preset-row">
+      <button class="preset-btn" data-station="ntv">日テレ</button>
+      <button class="preset-btn" data-station="tbs">TBS</button>
+      <button class="preset-btn" data-station="asahi">テレ朝</button>
+      <button class="preset-btn" data-station="fuji">フジ</button>
+      <button class="preset-btn" data-station="nhk">NHK</button>
+      <button class="preset-btn" data-station="wshow">ワイドショー</button>
+    </div>
+
+    <h2>テキスト編集</h2>
+    <div class="three-col">
+      <div>
+        <h3>上部帯</h3>
+        <div class="row"><label>見出し</label><input type="text" id="inBanner1" style="flex:1;"></div>
+        <div class="row"><label>供述/補足</label><input type="text" id="inBanner2" style="flex:1;"></div>
+        <div class="row"><label>時計</label><input type="text" id="inClock" placeholder="15:14"></div>
+      </div>
+      <div>
+        <h3>容疑者情報</h3>
+        <div class="row"><label>名前</label><input type="text" id="inName" style="flex:1;"></div>
+        <div class="row"><label>補足</label><input type="text" id="inNote" placeholder="おととし～今年" style="flex:1;"></div>
+      </div>
+      <div>
+        <h3>詳細文（下部バー）</h3>
+        <div class="row"><label>1行目</label><input type="text" id="inDesc1" style="flex:1;"></div>
+        <div class="row"><label>2行目</label><input type="text" id="inDesc2" placeholder="任意" style="flex:1;"></div>
+      </div>
+    </div>
+
+    <h2>供述・犯罪内容</h2>
+    <div class="row">
+      <label>表示</label><input type="checkbox" id="quoteToggle">
+      <input type="text" id="inQuote" placeholder="「足に唾を投げると興奮した」" style="flex:1;"></div>
+    </div>
+
+    <h2>表示切替</h2>
+    <div class="row">
+      <label>モザイク</label>
+      <select id="mosaicMode">
+        <option value="none">なし</option>
+        <option value="eye">目元だけ</option>
+        <option value="full">全体</option>
+      </select>
+      <label style="margin-left:20px;">下部スクロール</label>
+      <input type="checkbox" id="tickerToggle">
+    </div>
+
+    <h2>出力</h2>
+    <div class="row">
+      <button id="dlBtn">画像として保存</button>
+      <button class="secondary" id="resetBtn">リセット</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  function g(id) { return document.getElementById(id); }
+
+  var previewWrap = g('previewWrap'), blurBg = g('blurBg'), mainPhoto = g('mainPhoto');
+  var bannerBorder = g('bannerBorder'), bannerRow1 = g('bannerRow1'), bannerRow2 = g('bannerRow2');
+  var stationBadge = g('stationBadge'), clock = g('clock');
+  var suspectName = g('suspectName'), suspectNote = g('suspectNote');
+  var descLine1 = g('descLine1'), descLine2 = g('descLine2');
+  var mosaicEye = g('mosaicEye'), mosaicFull = g('mosaicFull'), mosaicNote = g('mosaicNote');
+  var ticker = g('ticker'), tickerText = g('tickerText');
+  var uploadArea = g('uploadArea'), fileInput = g('fileInput');
+  var posY = g('posY'), posX = g('posX'), posYval = g('posYval'), posXval = g('posXval');
+  var blurBgToggle = g('blurBgToggle'), saturate = g('saturate'), satVal = g('satVal');
+  var inBanner1 = g('inBanner1'), inBanner2 = g('inBanner2');
+  var inName = g('inName'), inNote = g('inNote');
+  var inDesc1 = g('inDesc1'), inDesc2 = g('inDesc2'), inClock = g('inClock');
+  var mosaicMode = g('mosaicMode'), tickerToggle = g('tickerToggle');
+  var quoteBox = g('quoteBox'), quoteText = g('quoteText');
+  var quoteToggle = g('quoteToggle'), inQuote = g('inQuote');
+  var dlBtn = g('dlBtn'), resetBtn = g('resetBtn');
+
+  var imgUrl = null;
+
+  var stationPresets = {
+    ntv:   { label: 'NTV', badgeBg: '#ff6600', badgeText: '#fff', bannerAccent: '#d80000', tickerColor: '#ffd100' },
+    tbs:   { label: 'TBS', badgeBg: '#dc0000', badgeText: '#fff', bannerAccent: '#dc0000', tickerColor: '#fff' },
+    asahi: { label: 'EX',  badgeBg: '#003366', badgeText: '#fff', bannerAccent: '#cc0000', tickerColor: '#00a0e9' },
+    fuji:  { label: 'CX',  badgeBg: '#005bbb', badgeText: '#fff', bannerAccent: '#005bbb', tickerColor: '#ffcc00' },
+    nhk:   { label: 'NHK', badgeBg: '#00337c', badgeText: '#fff', bannerAccent: '#b91b2c', tickerColor: '#00337c' },
+    wshow: { label: 'CH',  badgeBg: '#ff2e88', badgeText: '#fff', bannerAccent: '#ff2e88', tickerColor: '#ffcc00' }
+  };
+
+  /* 写真 */
+  uploadArea.addEventListener('click', function () { fileInput.click(); });
+  uploadArea.addEventListener('dragover', function (e) { e.preventDefault(); uploadArea.style.borderColor = '#aaa'; });
+  uploadArea.addEventListener('dragleave', function () { uploadArea.style.borderColor = '#555'; });
+  uploadArea.addEventListener('drop', function (e) {
+    e.preventDefault(); uploadArea.style.borderColor = '#555';
+    var f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) loadImg(f);
+  });
+  fileInput.addEventListener('change', function (e) {
+    var f = e.target.files[0]; if (f) loadImg(f);
+  });
+  function loadImg(f) {
+    var r = new FileReader();
+    r.onload = function (ev) {
+      imgUrl = ev.target.result;
+      mainPhoto.src = imgUrl; mainPhoto.style.display = 'block';
+      blurBg.style.backgroundImage = 'url(' + imgUrl + ')';
+      updatePhoto();
+    };
+    r.readAsDataURL(f);
+  }
+
+  /* 位置・フィルター */
+  posY.addEventListener('input', function (e) { posYval.textContent = e.target.value; updatePhoto(); });
+  posX.addEventListener('input', function (e) { posXval.textContent = e.target.value; updatePhoto(); });
+  blurBgToggle.addEventListener('change', updatePhoto);
+  saturate.addEventListener('input', function (e) { satVal.textContent = e.target.value + '%'; updatePhoto(); });
+  function updatePhoto() {
+    if (!imgUrl) return;
+    mainPhoto.style.objectPosition = posX.value + '% ' + posY.value + '%';
+    var sat = saturate.value / 100;
+    mainPhoto.style.filter = 'saturate(' + sat + ') contrast(1.05)';
+    blurBg.style.filter = 'blur(12px) saturate(' + (sat * 0.7) + ') brightness(0.8)';
+    blurBg.style.display = blurBgToggle.checked ? 'block' : 'none';
+  }
+
+  /* テキスト反映 */
+  [inBanner1, inBanner2, inName, inNote, inDesc1, inDesc2, inClock, inQuote].forEach(function (el) {
+    el.addEventListener('input', reflectText);
+  });
+  function reflectText() {
+    bannerRow1.textContent = inBanner1.value;
+    bannerRow2.textContent = inBanner2.value;
+    suspectName.textContent = inName.value;
+    suspectNote.textContent = inNote.value;
+    descLine1.textContent = inDesc1.value;
+    descLine2.textContent = inDesc2.value;
+    clock.textContent = inClock.value || '--:--';
+    quoteText.textContent = inQuote.value;
+  }
+
+  quoteToggle.addEventListener('change', function (e) {
+    quoteBox.classList.toggle('show', e.target.checked);
+  });
+
+  /* 局プリセット */
+  document.querySelectorAll('[data-station]').forEach(function (btn) {
+    btn.addEventListener('click', function () { applyPreset(btn.dataset.station); });
+  });
+  function applyPreset(key) {
+    var p = stationPresets[key];
+    stationBadge.textContent = p.label;
+    stationBadge.style.background = p.badgeBg;
+    stationBadge.style.color = p.badgeText;
+    bannerRow1.style.color = p.bannerAccent;
+    tickerText.style.color = p.tickerColor;
+    quoteBox.style.setProperty('--ntv-red', p.bannerAccent);
+    quoteBox.querySelector('.quote-box-inner').style.borderLeftColor = p.bannerAccent;
+  }
+
+  /* モザイク */
+  mosaicMode.addEventListener('change', function (e) {
+    var v = e.target.value;
+    mosaicEye.classList.toggle('active', v === 'eye');
+    mosaicFull.classList.toggle('active', v === 'full');
+    mosaicNote.classList.toggle('active', v !== 'none');
+  });
+
+  /* スクロールテロップ */
+  tickerToggle.addEventListener('change', function (e) {
+    ticker.classList.toggle('show', e.target.checked);
+  });
+
+  /* 保存 */
+  dlBtn.addEventListener('click', function () {
+    dlBtn.textContent = '準備中...'; dlBtn.disabled = true;
+    function capture() {
+      window.html2canvas(previewWrap, { scale: 2, useCORS: true, backgroundColor: '#000' }).then(function (canvas) {
+        var a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = 'news_filter_' + Date.now() + '.png';
+        document.body.appendChild(a); a.click(); a.remove();
+        dlBtn.textContent = '画像として保存'; dlBtn.disabled = false;
+      }).catch(function () {
+        alert('保存に失敗しました。');
+        dlBtn.textContent = '画像として保存'; dlBtn.disabled = false;
+      });
+    }
+    if (window.html2canvas) { capture(); return; }
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+    s.onload = capture;
+    s.onerror = function () {
+      alert('ライブラリの読み込みに失敗しました。'); dlBtn.textContent = '画像として保存'; dlBtn.disabled = false;
+    };
+    document.head.appendChild(s);
+  });
+
+  /* リセット */
+  resetBtn.addEventListener('click', function () {
+    fileInput.value = '';
+    mainPhoto.src = ''; mainPhoto.style.display = 'none';
+    blurBg.style.backgroundImage = '';
+    imgUrl = null;
+    posY.value = 40; posYval.textContent = '40';
+    posX.value = 50; posXval.textContent = '50';
+    saturate.value = 80; satVal.textContent = '80%';
+    blurBgToggle.checked = true;
+    mosaicMode.value = 'none';
+    mosaicEye.classList.remove('active'); mosaicFull.classList.remove('active'); mosaicNote.classList.remove('active');
+    tickerToggle.checked = false; ticker.classList.remove('show');
+    quoteToggle.checked = false; quoteBox.classList.remove('show');
+    init();
+  });
+
+  /* 初期値 */
+  function init() {
+    inBanner1.value = '女子高生の足に唾投げるなどしたか 男逮捕';
+    inBanner2.value = '「足に唾を投げると興奮した」';
+    inName.value = '菊田';
+    inNote.value = 'おととし～今年';
+    inDesc1.value = '商業施設で女子高校生3人の足に自身の唾液を投げるなどした疑い';
+    inDesc2.value = '';
+    inClock.value = '15:14';
+    inQuote.value = '「足に唾を投げると興奮した」';
+    applyPreset('ntv');
+    reflectText();
+  }
+  init();
+
+})();
+</script>
+</body>
+</html>
